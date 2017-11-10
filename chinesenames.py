@@ -3,7 +3,8 @@ from collections import Counter
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 import time
-from namefeatures import NameFeatureExtractor
+from textfeatures import TextFeatureExtractor
+from sparsehelpers import dict_to_csr_matrix
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -31,19 +32,23 @@ class ChineseNameDetector(object):
 		assert set(self.data.columns) == set({"full_name", "is_chinese"}), print("#@#@# error! wrong column names in data csv...")
 		assert sum(list(Counter(self.data.is_chinese).values())) == len(self.data), print("#@#@# error! seems like not all names in data are labelled...")
 
-		self.nfe = NameFeatureExtractor()
+		self.tfe = TextFeatureExtractor()
+		self.features = dict()
 
 	@timer
 	def create_features(self):
 
-		fs = dict()
-
-		for row in self.data.sample(frac=1).iloc[:120000].iterrows():
-			#print(self.nfe.get_features(row[1].full_name)
-			fs.update({row[0]: self.nfe.get_features(row[1].full_name)})
+		for row in self.data.iterrows():
+			self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
 		
-		fs_df = pd.DataFrame.from_dict(fs, orient='index')
-		print("created a {}x{} feature data frame".format(fs_df.shape))
+		print(f"created {len(self.features)} features")
+
+		# create a sparce matrix
+		f_names, f_smatr = dict_to_csr_matrix(self.features)
+		
+
+
+		return self
 
 
 if __name__ == '__main__':
