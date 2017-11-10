@@ -45,7 +45,10 @@ class ChineseNameDetector(object):
 
 		# create a sparce matrix
 		f_names, f_smatr = dict_to_csr_matrix(self.features)
-		
+		print(f_smatr)
+		print(f_smatr.shape)
+		# create a pandas sparse dataframe
+		sdf = pd.SparseDataFrame(f_smatr)
 
 
 		return self
