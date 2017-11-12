@@ -41,8 +41,15 @@ class ChineseNameDetector(object):
 	def __repr__(self):
 	 	pass
 
+	def train_test(self):
+		# split into the training and testing dats
+		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1), 
+											self.data.is_chinese, test_size=0.33, random_state=42, stratify=self.data.is_chinese)
+
+		return self
+
 	# generator that supplies chunks of data
-	def get_data_chunks(self, sdf, ch=1000):
+	def chunk_generator(self, sdf, ch=1000):
 
 		i = 0
 
@@ -50,43 +57,33 @@ class ChineseNameDetector(object):
 			yield sdf[i*ch:(i+1)*ch].toarray()
 			i += 1
 
-	def train(self):
-		# split into the training and testing dats
-		X_train, X_test, y_train, y_test = train_test_split(self.data.drop('is_chinese', axis=1), 
-											self.data.is_chinese, test_size=0.33, random_state=42, stratify=self.data.is_chinese)
-
-		print(f'training set: {X_train.shape}')
-		return self
-
-	
-
-
 	@timer
-	def create_features(self):
-
-		# target as a numpy array
-		y = self.data.is_chinese.values
-
-		for row in self.data.iterrows():
+	def create_features(self, df, train_or_test = 'training'):
+		
+		print(df.head())
+		assert set(df.columns) == {"full_name"}, print("[create_features] error: wrong column names in supplied data frame!")
+		
+		for row in df.iterrows():
 			self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
 		
-		print(f"created {len(self.features)} features")
+		print(f"created {len(self.features)} features, {train_or_test} mode")
 
 		# create a sparce feature matrix
-		self.f_names, self.f_smatr = dict_to_csr_matrix(self.features)
-		
-		
-
-
+		self.feature_names, self.features_as_csr = dict_to_csr_matrix(self.features)
 
 		return self
+
+	@timer
+	def train(self):
+		print('ativating a model..')
+		model = Sequential()
+
 
 
 if __name__ == '__main__':
 
 	cd = ChineseNameDetector()
 	print(cd.data.head())
+	cd.train_test()
+	cd.create_features(cd.X_train)
 	cd.train()
-	cd.create_features()
-	for c in cd.get_data_chunks(cd.f_smatr):
-		print(c)
