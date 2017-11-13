@@ -49,12 +49,12 @@ class ChineseNameDetector(object):
 		return self
 
 	# generator that supplies chunks of data
-	def chunk_generator(self, sdf, ch=1000):
+	def chunk_generator(self):
 
 		i = 0
 
-		while i*ch <= sdf.shape[0]:
-			yield sdf[i*ch:(i+1)*ch].toarray()
+		while i*ch <= self.features_as_csr.shape[0]:
+			yield self.features_as_csr[i*ch:(i+1)*ch].toarray(), self.y_train[i*ch:(i+1)*ch]
 			i += 1
 
 	@timer
@@ -77,6 +77,7 @@ class ChineseNameDetector(object):
 	def train(self):
 		print('ativating a model..')
 		model = Sequential()
+		model.add(Dense(units=64, activation=None, input_shape=self.features_as_csr.shape))
 
 
 
