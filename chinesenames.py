@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import Counter
 from keras.models import Sequential
-from keras.layers import Dense, Activation
+from keras.layers import Dense, Activation, Flatten
 import time
 import pickle
 from textfeatures import TextFeatureExtractor
@@ -13,78 +13,91 @@ def timer(func):
     def wrapper(*args, **kwargs):
         t_start = time.time()
         res = func(*args, **kwargs)
-        print("f: {} # elapsed time: {:.0f} m {:.0f}s".format(func.__name__.upper(), *divmod(time.time() - t_start, 60)))
+        print("f: {} # elapsed time: {:.0f} m {:.0f}s".format(
+            func.__name__.upper(), *divmod(time.time() - t_start, 60)))
         return res
     return wrapper
 
+
 class ChineseNameDetector(object):
 
-	def __init__(self):
+    def __init__(self):
+        """
+        read up data into a data frame that look like below             
 
-		"""
-		read up data into a data frame that look like below             
-					
-					 full_name  is_chinese
-		0      dianne  van eck           0
-		1         chen zaichun           1
+                                 full_name  is_chinese
+        0      dianne  van eck           0
+        1         chen zaichun           1
 
-		"""
-		self.data = pd.read_csv('~/Data/names/chinesenames-data.csv')
-		print("name dataset contains {} names".format(len(self.data)))
+        """
+        self.data = pd.read_csv('~/Data/names/chinesenames-data.csv')
+        print("name dataset contains {} names ({} chinese)".format(len(self.data), Counter(self.data.is_chinese)[1]))
 
-		assert set(self.data.columns) == set({"full_name", "is_chinese"}), print("#@#@# error! wrong column names in data csv...")
-		assert sum(list(Counter(self.data.is_chinese).values())) == len(self.data), print("#@#@# error! seems like not all names in data are labelled...")
+        assert set(self.data.columns) == set({"full_name", "is_chinese"}), print("wrong column names in data csv...")
+        assert sum(list(Counter(self.data.is_chinese).values())) == len(self.data), print(
+            "seems like not all names in data are labelled...")
 
-		self.tfe = TextFeatureExtractor()
-		self.features = dict()
+        self.tfe = TextFeatureExtractor()
+        self.features = dict()
 
-	def __repr__(self):
-	 	pass
+    def train_test(self):
+        # split into the training and testing dats
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1),
+                                                                                self.data.is_chinese, test_size=0.2, random_state=42, stratify=self.data.is_chinese)
 
-	def train_test(self):
-		# split into the training and testing dats
-		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1), 
-											self.data.is_chinese, test_size=0.33, random_state=42, stratify=self.data.is_chinese)
+        return self
 
-		return self
+    # generator that supplies chunks of data
+    def data_generator(self, batchsize=256):
+    	"""
+		this generator needs to be running indefinitely
+    	"""
+    	already_read = 0
+    	while 1:
+    		while already_read < self.features_as_csr.shape[0] - batchsize:
+    			already_read += batchsize
+    			yield (self.features_as_csr[already_read:already_read + batchsize].toarray(),
+            		self.y_train[already_read:already_read + batchsize])
+            
 
-	# generator that supplies chunks of data
-	def chunk_generator(self):
+    @timer
+    def create_features(self, df):
 
-		i = 0
+        assert set(df.columns) == {"full_name"}, print(
+            "[create_features]: wrong column names in supplied data frame!")
 
-		while i*ch <= self.features_as_csr.shape[0]:
-			yield self.features_as_csr[i*ch:(i+1)*ch].toarray(), self.y_train[i*ch:(i+1)*ch]
-			i += 1
+        for row in df.iterrows():
+        	self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
+      
 
-	@timer
-	def create_features(self, df, train_or_test = 'training'):
-		
-		print(df.head())
-		assert set(df.columns) == {"full_name"}, print("[create_features] error: wrong column names in supplied data frame!")
-		
-		for row in df.iterrows():
-			self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
-		
-		print(f"created {len(self.features)} features, {train_or_test} mode")
+        print(f"created feature dictionary for {len(self.features)} names")
 
-		# create a sparce feature matrix
-		self.feature_names, self.features_as_csr = dict_to_csr_matrix(self.features)
+        # create a sparce feature matrix
+        self.feature_names, self.features_as_csr = dict_to_csr_matrix(self.features)
+        print('sparse matrix is {}x{}'.format(*self.features_as_csr.shape))
 
-		return self
+        return self
 
-	@timer
-	def train(self):
-		print('ativating a model..')
-		model = Sequential()
-		model.add(Dense(units=64, activation=None, input_shape=self.features_as_csr.shape))
+    @timer
+    def create_model(self):
 
+        model = Sequential()
+        model.add(Dense(units=64, activation='relu', input_shape=self.features_as_csr.shape[1:]))
+        #model.add(Dense(units=16, activation='relu'))
+        model.add(Flatten())
+        model.add(Dense(units=1, activation='sigmoid'))
+
+        model.compile(optimizer='rmsprop',
+                      loss='binary_crossentropy', metrics=['accuracy'])
+
+        return model
 
 
 if __name__ == '__main__':
 
-	cd = ChineseNameDetector()
-	print(cd.data.head())
-	cd.train_test()
-	cd.create_features(cd.X_train)
-	cd.train()
+    cd = ChineseNameDetector()
+    cd.train_test()
+    cd.create_features(cd.data.drop('is_chinese', axis=1))
+    model = cd.create_model()
+    model.fit_generator(
+            cd.data_generator(), steps_per_epoch=cd.X_train.shape[0]//256, epochs=10)
