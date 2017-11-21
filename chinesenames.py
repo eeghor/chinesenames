@@ -9,6 +9,7 @@ from textfeatures import TextFeatureExtractor
 from sparsehelpers import dict_to_csr_matrix
 from sklearn.model_selection import train_test_split
 import json
+import sys
 
 
 def timer(func):
@@ -91,6 +92,27 @@ class ChineseNameDetector(object):
 
 			self.features_test = pd.DataFrame.from_dict(self.features, orient='index').fillna(0)
 
+			# adjust features so that the training set has exactly the same ones as the training set
+			features_to_keep = set(self.features_test.columns) & set(self.features_train)
+			features_to_add = set(self.features_train) - set(self.features_test.columns)
+
+			if features_to_keep:
+				self.features_test = self.features_test.loc[:, features_to_keep]
+			else:
+				print('testing set has no features!')
+				sys.exit(0)
+
+			for f in features_to_add:
+				self.features_test[f] = 0
+
+			# finally, make sure the order of features in like in the training 
+			self.features_test = self.features_test[self.features_train.columns]
+
+			missing_index = set(self.X_test.index) - set(self.features_test.index)
+
+			if missing_index:
+				self.y_test= self.y_test[~self.y_test.index.isin(missing_index)]
+
 
 
 		# create a sparce feature matrix
@@ -156,16 +178,17 @@ class ChineseNameDetector(object):
 		model = Sequential()
 		#print('training data: ', self.features_train.shape)
 		#print('lablels:', self.y_train.shape)
-		model.add(Dense(512, input_shape=(self.features_train.shape[1],)))
+		model.add(Dense(128, input_shape=(self.features_train.shape[1],)))
 		model.add(Activation('relu'))
-		model.add(Dense(2))
-		model.add(Activation('softmax'))
+		model.add(Dense(128))
+		model.add(Activation('relu'))
+		model.add(Dense(1, activation='sigmoid'))
 
 		# model.add(Dense(units=64, activation='relu', input_shape=(self.X_train.shape[1],)))
 		# #model.add(Dense(units=16, activation='relu'))
 		# #model.add(Flatten())
 		# model.add(Dense(self.X_train.shape[1], activation='relu'))
-		model.add(Dense(units=1, activation='sigmoid'))
+		# model.add(Dense(units=1, activation='sigmoid'))
 
 		model.compile(loss='binary_crossentropy', 
 			  optimizer='rmsprop', 
@@ -187,10 +210,11 @@ class ChineseNameDetector(object):
 
 if __name__ == '__main__':
 
-	cd = ChineseNameDetector()
+	cd = ChineseNameDetector(resample=40000)
 	#cd.train_test()
 
-	cd.create_features()
+	cd.create_features(train_or_test='Train')
+	cd.create_features(train_or_test='Test')
 
 	# partition = {'train': cd.X_train.index.tolist(), 'validation': cd.X_test.index.tolist()}  # training and validation ids
 	# labels = {t[0]: t[1] for t in zip(cd.X_train.index.tolist(), cd.y_train)}.update({t[0]: t[1] for t in zip(cd.X_test.index.tolist(), cd.y_test)})
@@ -209,11 +233,16 @@ if __name__ == '__main__':
 	#print('X_train=', cd.X_train.shape)
 	#print(cd.y_train.values.shape, cd.X_train.values.shape)
 
-	model.fit(cd.fe.values, cd.y_train.values, 
+	model.fit(cd.features_train.values, cd.y_train.values, 
+					validation_data=(cd.features_test.values, cd.y_test.values), 
 					batch_size=32, 
-					epochs=2, 
+					epochs=10, 
 					verbose=1)
-	score = model.evaluate(x_test, y_test, batch_size=128)
+
+	# returns loss (index 0) and any requested metric
+	score = model.evaluate(cd.features_test.values, cd.y_test.values, batch_size=128)
+
+	print('loss: {:.2f} accuracy: {:.2f}'.format(*score))
 
 	# model.fit_generator(generator = training_generator,
 	# 				steps_per_epoch = len(partition['train'])//batch_size,
