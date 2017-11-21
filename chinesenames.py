@@ -23,7 +23,7 @@ def timer(func):
 
 class ChineseNameDetector(object):
 
-	def __init__(self):
+	def __init__(self, resample=10000):
 		"""
 		read up data into a data frame that look like below             
 
@@ -39,41 +39,59 @@ class ChineseNameDetector(object):
 		assert sum(list(Counter(self.data.is_chinese).values())) == len(self.data), print(
 			"seems like not all names in data are labelled...")
 
-		self.data = pd.concat([self.data[self.data.is_chinese == 0].sample(10000), self.data[self.data.is_chinese == 1].sample(10000)]).sample(frac=1)
-		print("resampled name dataset contains {} names ({} chinese)".format(len(self.data), Counter(self.data.is_chinese)[1]))
+		# resample here
+		if resample:
+			self.data = (pd.concat([self.data[self.data.is_chinese == 0]
+							.sample(resample), self.data[self.data.is_chinese == 1]
+								.sample(resample)]).sample(frac=1))
+			print("resampled name dataset contains {} names ({} chinese)".format(len(self.data), Counter(self.data.is_chinese)[1]))
 
 		self.tfe = TextFeatureExtractor()
-		self.features = dict()
 
 		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1),
 																				self.data.is_chinese, test_size=0.2, random_state=42, stratify=self.data.is_chinese)
-		print("X_train=", self.X_train.shape)
-		print("index lenght=", len(set(self.X_train.index)))
-		X1 = self.X_train.drop_duplicates('full_name')
-		print('X1=',X1.shape)
+		#print("X_train=", self.X_train.shape)
+		#print("index lenght=", len(set(self.X_train.index)))
+		#X1 = self.X_train.drop_duplicates('full_name')
+		#print('X1=',X1.shape)
 
 		#print("y_train=", self.y_train.head())
 			
 
 	@timer
-	def create_features(self):
-
+	def create_features(self, train_or_test='Train'):
+		"""
+		creates features for the training and testing sets
+		"""
 		assert set(self.X_train.columns) == {"full_name"}, print(
 			"[create_features]: wrong column names in supplied data frame!")
 
-		for row in self.X_train.iterrows():
-			self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
-	  
-		json.dump(self.features, open('model_fs.json', 'w'))
-		print(f"created feature dictionary for {len(self.features)} names")
+		self.features = dict()
 
-		self.fe = pd.DataFrame.from_dict(self.features, orient='index').fillna(0)
-		print(self.fe.head())
+		if train_or_test == 'Train':
 
-		missing_index = set(self.X_train.index) - set(self.fe.index)
+			for row in self.X_train.iterrows():
+				self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
+	  		
+	  		# save features as a json
+			json.dump(self.features, open('model_fs.json', 'w'))
+			print(f"created feature dictionary for {len(self.features)} full names")
 
-		if missing_index:
-			self.y_train = self.y_train[~self.y_train.index.isin(missing_index)]
+			self.features_train = pd.DataFrame.from_dict(self.features, orient='index').fillna(0)
+
+			missing_index = set(self.X_train.index) - set(self.features_train.index)
+
+			if missing_index:
+				self.y_train = self.y_train[~self.y_train.index.isin(missing_index)]
+		
+		elif train_or_test == 'Test':
+
+			for row in self.X_test.iterrows():
+				self.features.update({row[0]: self.tfe.get_features(row[1].full_name)})
+
+			self.features_test = pd.DataFrame.from_dict(self.features, orient='index').fillna(0)
+
+
 
 		# create a sparce feature matrix
 		# self.feature_names, self.features_as_csr = dict_to_csr_matrix(self.features)
@@ -136,9 +154,9 @@ class ChineseNameDetector(object):
 	def create_model(self):
 
 		model = Sequential()
-		#print('training data: ', self.fe.shape)
+		#print('training data: ', self.features_train.shape)
 		#print('lablels:', self.y_train.shape)
-		model.add(Dense(512, input_shape=(self.fe.shape[1],)))
+		model.add(Dense(512, input_shape=(self.features_train.shape[1],)))
 		model.add(Activation('relu'))
 		model.add(Dense(2))
 		model.add(Activation('softmax'))
@@ -191,10 +209,11 @@ if __name__ == '__main__':
 	#print('X_train=', cd.X_train.shape)
 	#print(cd.y_train.values.shape, cd.X_train.values.shape)
 
-	history = model.fit(cd.fe.values, cd.y_train.values, 
+	model.fit(cd.fe.values, cd.y_train.values, 
 					batch_size=32, 
 					epochs=2, 
 					verbose=1)
+	score = model.evaluate(x_test, y_test, batch_size=128)
 
 	# model.fit_generator(generator = training_generator,
 	# 				steps_per_epoch = len(partition['train'])//batch_size,
