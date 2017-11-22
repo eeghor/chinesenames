@@ -49,15 +49,20 @@ class ChineseNameDetector(object):
 
 		self.tfe = TextFeatureExtractor()
 
+		# dr = self.data.drop('is_chinese', axis=1)
+		# print(dr.head())
 		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1),
-																				self.data.is_chinese, test_size=0.2, random_state=42, stratify=self.data.is_chinese)
+																				self.data.drop('full_name', axis=1), test_size=0.2, 
+																				random_state=42, stratify=self.data.drop('full_name', axis=1))
+		
+		# print(self.X_train.head(), self.y_train.head())
 		#print("X_train=", self.X_train.shape)
 		#print("index lenght=", len(set(self.X_train.index)))
 		#X1 = self.X_train.drop_duplicates('full_name')
 		#print('X1=',X1.shape)
 
 		#print("y_train=", self.y_train.head())
-			
+		# sys.exit(0)
 
 	@timer
 	def create_features(self, train_or_test='Train'):
@@ -84,6 +89,11 @@ class ChineseNameDetector(object):
 
 			if missing_index:
 				self.y_train = self.y_train[~self.y_train.index.isin(missing_index)]
+
+			self.features_train.sort_index(inplace=True)
+			self.y_train.sort_index(inplace=True)
+
+			# print(self.features_train.head(), self.y_train.head())
 		
 		elif train_or_test == 'Test':
 
@@ -112,6 +122,9 @@ class ChineseNameDetector(object):
 
 			if missing_index:
 				self.y_test= self.y_test[~self.y_test.index.isin(missing_index)]
+
+			self.features_test.sort_index(inplace=True)
+			self.y_test.sort_index(inplace=True)
 
 
 
@@ -210,7 +223,7 @@ class ChineseNameDetector(object):
 
 if __name__ == '__main__':
 
-	cd = ChineseNameDetector(resample=40000)
+	cd = ChineseNameDetector(resample=20000)
 	#cd.train_test()
 
 	cd.create_features(train_or_test='Train')
@@ -236,7 +249,7 @@ if __name__ == '__main__':
 	model.fit(cd.features_train.values, cd.y_train.values, 
 					validation_data=(cd.features_test.values, cd.y_test.values), 
 					batch_size=32, 
-					epochs=10, 
+					epochs=100, 
 					verbose=1)
 
 	# returns loss (index 0) and any requested metric

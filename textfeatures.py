@@ -71,9 +71,9 @@ class TextFeatureExtractor:
 		"""
 		bi-grams
 		"""
-		for i, w in enumerate(words):
-			if len(words) > i + 1:
-				features.update({fpref + '-'.join([w, words[i+1]]): 1})
+		# for i, w in enumerate(words):
+		# 	if len(words) > i + 1:
+		# 		features.update({fpref + '-'.join([w, words[i+1]]): 1})
 
 		"""
 		count the number of words separated by white space
@@ -148,4 +148,4 @@ class TextFeatureExtractor:
 if __name__ == '__main__':
 
 	 tfe = TextFeatureExtractor()
-	 print(tfe.get_features('90sw zhu choi chain 021344 556'))
+	 print(tfe.get_features('first name last name'))
