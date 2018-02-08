@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from keras.models import Sequential
-from keras.layers import Dense, Activation, Flatten
+from keras.layers import Dense, Activation, Flatten, Dropout
 import time
 import pickle
 from textfeatures import TextFeatureExtractor
@@ -24,7 +24,7 @@ def timer(func):
 
 class ChineseNameDetector(object):
 
-	def __init__(self, resample=10000):
+	def __init__(self, ethnicity='chinese', resample=10000):
 		"""
 		read up data into a data frame that look like below             
 
@@ -33,25 +33,27 @@ class ChineseNameDetector(object):
 		1         chen zaichun           1
 
 		"""
-		self.data = pd.read_csv('~/Data/names/chinesenames-data.csv')
-		print("name dataset contains {} names ({} chinese)".format(len(self.data), Counter(self.data.is_chinese)[1]))
+		self.data = pd.read_csv(f'~/Data/names/training-{ethnicity}.csv')
+		self.COL = f'is_{ethnicity}'
 
-		assert set(self.data.columns) == set({"full_name", "is_chinese"}), print("wrong column names in data csv...")
-		assert sum(list(Counter(self.data.is_chinese).values())) == len(self.data), print(
+		print(f"name dataset contains {len(self.data)} names ({Counter(self.data[self.COL])[1]} {ethnicity})")
+
+		assert set(self.data.columns) == set({"full_name", self.COL}), print("wrong column names in data csv...")
+		assert sum(list(Counter(self.data[self.COL]).values())) == len(self.data), print(
 			"seems like not all names in data are labelled...")
 
 		# resample here
 		if resample:
-			self.data = (pd.concat([self.data[self.data.is_chinese == 0]
-							.sample(resample), self.data[self.data.is_chinese == 1]
+			self.data = (pd.concat([self.data[self.data[self.COL ]== 0]
+							.sample(resample), self.data[self.data[self.COL ] == 1]
 								.sample(resample)]).sample(frac=1))
-			print("resampled name dataset contains {} names ({} chinese)".format(len(self.data), Counter(self.data.is_chinese)[1]))
+			print(f"resampled name dataset contains {len(self.data)} names ({Counter(self.data[self.COL])[1]} {ethnicity})")
 
 		self.tfe = TextFeatureExtractor()
 
 		# dr = self.data.drop('is_chinese', axis=1)
 		# print(dr.head())
-		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop('is_chinese', axis=1),
+		self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.data.drop(self.COL, axis=1),
 																				self.data.drop('full_name', axis=1), test_size=0.2, 
 																				random_state=42, stratify=self.data.drop('full_name', axis=1))
 		
@@ -191,10 +193,12 @@ class ChineseNameDetector(object):
 		model = Sequential()
 		#print('training data: ', self.features_train.shape)
 		#print('lablels:', self.y_train.shape)
-		model.add(Dense(128, input_shape=(self.features_train.shape[1],)))
+		model.add(Dense(64, input_shape=(self.features_train.shape[1],)))
 		model.add(Activation('relu'))
-		model.add(Dense(128))
+		model.add(Dropout(0.4))
+		model.add(Dense(64))
 		model.add(Activation('relu'))
+		model.add(Dropout(0.3))
 		model.add(Dense(1, activation='sigmoid'))
 
 		# model.add(Dense(units=64, activation='relu', input_shape=(self.X_train.shape[1],)))
@@ -223,7 +227,7 @@ class ChineseNameDetector(object):
 
 if __name__ == '__main__':
 
-	cd = ChineseNameDetector(resample=20000)
+	cd = ChineseNameDetector(ethnicity='indian', resample=None)
 	#cd.train_test()
 
 	cd.create_features(train_or_test='Train')
@@ -249,7 +253,7 @@ if __name__ == '__main__':
 	model.fit(cd.features_train.values, cd.y_train.values, 
 					validation_data=(cd.features_test.values, cd.y_test.values), 
 					batch_size=32, 
-					epochs=100, 
+					epochs=5, 
 					verbose=1)
 
 	# returns loss (index 0) and any requested metric
